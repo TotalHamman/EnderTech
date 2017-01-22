@@ -1,8 +1,24 @@
+# eclipse
+eclipse
+bin
+*.launch
+.settings
+.metadata
+.classpath
+.project
+
 # Gradle
 build
 .gradle
 
 .DS_Store
+
+# idea
+out
+*.ipr
+*.iws
+*.iml
+.idea
 
 # Minecraft
 run

@@ -1,222 +1,92 @@
 buildscript {
     repositories {
-        mavenCentral()
-        maven {
-            name = "forge"
-            url = "http://files.minecraftforge.net/maven"
-        }
-
-        maven {
-            name = "sonatype"
-            url = "https://oss.sonatype.org/content/repositories/snapshots/"
-        }
+        jcenter()
+        maven { url = "http://files.minecraftforge.net/maven" }
     }
-
     dependencies {
-        classpath 'net.minecraftforge.gradle:ForgeGradle:1.2-SNAPSHOT'
+        classpath 'net.minecraftforge.gradle:ForgeGradle:2.2-SNAPSHOT'
     }
 }
+apply plugin: 'net.minecraftforge.gradle.forge'
+//Only edit below this line, the above code adds and enables the nessasary things for Forge to be setup.
+apply plugin: 'maven'
+apply plugin: 'maven-publish'
 
 repositories {
-    ivy {
-        name 'Forge FS legacy'
-        artifactPattern "http://files.minecraftforge.net/[module]/[module]-dev-[revision].[ext]"
-    }
-
-    // Pulsar
-    //maven {
-    //    name 'Drakon.io Arca'
-    //    url "http://arca.drakon.io/"
-    //}
-
-    maven { // The repo from which to get waila
-        name "Mobius Repo"
-        url "http://mobiusstrip.eu/maven"
-    }
-
-    maven { // the repo from which to get NEI and stuff
-        name 'CB Repo'
-        url "http://chickenbones.net/maven/"
+    maven {
+        name "JEI Maven."
+        url "http://dvs1.progwml6.com/files/maven"
     }
 }
 
-apply plugin: 'forge'
+// Define properties file
+ext.configFile = file "build.properties"
 
-def loadProperties(propsFilename) {
-    def props = new Properties()
-    new File(propsFilename).withInputStream {
-        stream -> props.load(stream)
-    }
-
-    return new ConfigSlurper().parse(props)
+configFile.withReader {
+    // Load config.  It shall from now be referenced as simply config or project.config
+    def prop = new Properties()
+    prop.load(it)
+    project.ext.config = new ConfigSlurper().parse prop
 }
 
-def config = loadProperties("build.properties")
-ext.keystore_config = null
-ext.keystore = null
+version = "${config.mcversion}-${config.mod_version}"
+group= "totalhamman.endertechreborn" // http://maven.apache.org/guides/mini/guide-naming-conventions.html
+archivesBaseName = "endertechreborn"
 
-if (project.hasProperty("endertech_keystore_dir")) {
-    ext.keystore_config = loadProperties(project.endertech_keystore_dir + File.separator + "keystore.properties")
-    ext.keystore = project.endertech_keystore_dir + File.separator + ext.keystore_config.key_store
-}
-
-def env = System.getenv()
-
-// Get Jenkins metadata
-ext.jenkinsManifest = manifest {
-    if (env.BUILD_TAG != null) { // If this works, we'll assume we're in Jenkins at least.
-        attributes("Jenkins-Build": "true", "Jenkins-Tag": env.BUILD_TAG, "Jenkins-ID": env.BUILD_ID)
-    } else {
-        attributes("Jenkins-Build": "false")
-    }
-}
-// Get Git metadata (if in Jenkins)
-ext.gitManifest = manifest {
-    if (env.GIT_BRANCH != null) {
-        attributes("Git-Branch": env.GIT_BRANCH, "Git-Hash": env.GIT_COMMIT)
-    }
-}
-
-configurations {
-    shade
-    compile.extendsFrom shade
-}
-
-dependencies {
-    //compile fileTree(dir: 'lib', includes: ['*.jar'])
-    //shade 'io.drakon:Pulsar:0.3.0'
-    //compile name: 'ForgeMultipart', version: "${config.minecraft_version}-${config.FMP_version}", ext: 'jar'
-    //compile name: 'CodeChickenLib', version: "${config.minecraft_version}-${config.CCLIB_version}", ext: 'jar'
-    //compile name: 'NotEnoughItems', version: "${config.NEI_version}", type: 'jar'
-    compile "mcp.mobius.waila:Waila:${config.waila_version}_${config.minecraft_version}:dev"
-    compile "codechicken:CodeChickenCore:${config.minecraft_version}-${config.ccc_version}:dev"
-    compile "codechicken:CodeChickenLib:${config.minecraft_version}-${config.cclib_version}:dev"
-    compile "codechicken:NotEnoughItems:${config.minecraft_version}-${config.nei_version}:dev"
-
-    // Dependencies that do not provide an easy way to grab them with Gradle must be included manually
-    // List of shame:
-    //  CoFHLib
-    //  CoFHCore
-    //  Thermal Foundation
-    //  Thermal Expansion
-    compile fileTree(dir: 'libs', include: ['*.jar'])
-}
-
-group = "io.endertech"
-version = config.mod_version
-archivesBaseName = "EnderTech"
-
-// Add packapi source set
-sourceSets.main.java.srcDir "src/packapi/java"
-sourceSets.main.resources.srcDir "src/packapi/resources"
-
-task buildInfo {
-    if (env.BUILD_NUMBER != null) {
-        ext.build_number = "${env.BUILD_NUMBER}"
-    } else {
-        def tag_cmd = "git rev-parse --short HEAD"
-        def tag_proc = tag_cmd.execute()
-        tag_proc.waitFor()
-
-        def branch_cmd = "git branch"
-        def branch_proc = branch_cmd.execute()
-        branch_proc.waitFor()
-
-        if (tag_proc.exitValue() == 0 && branch_proc.exitValue() == 0) {
-            ext.build_number = branch_proc.text.split(' ')[1].trim() + "-" + tag_proc.text.trim()
-        } else {
-            ext.build_number = "unknown"
-        }
-    }
+sourceCompatibility = targetCompatibility = "1.7" // Need this here so eclipse task generates correctly.
+compileJava {
+    sourceCompatibility = targetCompatibility = "1.7"
 }
 
 minecraft {
-    version = config.minecraft_version + "-" + config.forge_version
-    assetDir = 'run/assets'
-
+    version = config.mcversion + "-" + config.forge_version
+    runDir = "run"
+    mappings = "${config.mcp_mappings}"
+    replace '@VERSION@', project.config.mod_version
     replaceIn "reference/Reference.java"
-
-    if (keystore_config != null)
-        replace "@FINGERPRINT@", keystore_config.key_sha1
-
-    replace "@VERSION@", "${config.minecraft_version}-${config.mod_version}.${project.buildInfo.build_number}"
-
-    //srgExtra "PK: io/drakon/pulsar io/endertech/repack/pulsar"
+    // makeObfSourceJar = false // an Srg named sources jar is made by default. uncomment this to disable.
 }
 
-version = "${config.minecraft_version}-${config.mod_version}.${project.buildInfo.build_number}"
+dependencies {
+    // you may put jars on which you depend on in ./libs
+    // or you may define them like so..
+    //compile "some.group:artifact:version:classifier"
+    //compile "some.group:artifact:version"
+      
+    // real examples
+    //compile 'com.mod-buildcraft:buildcraft:6.0.8:dev'  // adds buildcraft to the dev env
+    //compile 'com.googlecode.efficient-java-matrix-library:ejml:0.24' // adds ejml to the dev env
 
-processResources {
+    // the 'provided' configuration is for optional dependencies that exist at compile-time but might not at runtime.
+    //provided 'com.mod-buildcraft:buildcraft:6.0.8:dev'
+
+    // the deobf configurations:  'deobfCompile' and 'deobfProvided' are the same as the normal compile and provided,
+    // except that these dependencies get remapped to your current MCP mappings
+    //deobfCompile 'com.mod-buildcraft:buildcraft:6.0.8:dev'
+    //deobfProvided 'com.mod-buildcraft:buildcraft:6.0.8:dev'
+
+    // for more info...
+    // http://www.gradle.org/docs/current/userguide/artifact_dependencies_tutorial.html
+    // http://www.gradle.org/docs/current/userguide/dependency_management.html
+
+}
+
+processResources
+{
+    // this will ensure that this task is redone when the versions change.
+    inputs.property "version", project.version
+    inputs.property "mcversion", project.minecraft.version
+
+    // replace stuff in mcmod.info, nothing else
     from(sourceSets.main.resources.srcDirs) {
         include 'mcmod.info'
-        include 'version.properties'
-
-        expand 'version': project.version, 'build_number': project.buildInfo.build_number, 'mcversion': project.minecraft.version
+                
+        // replace version and mcversion
+        expand 'version':project.version, 'mcversion':project.minecraft.version
     }
-
+        
+    // copy everything else, thats not the mcmod.info
     from(sourceSets.main.resources.srcDirs) {
         exclude 'mcmod.info'
-        exclude 'version.properties'
     }
 }
-
-jar {
-    // Grab deps for shading
-    configurations.shade.each { dep ->
-        from(project.zipTree(dep)){
-            exclude 'META-INF', 'META-INF/**'
-        }
-    }
-
-    // Merge Jenkins and Git manifests to form final manifest in final release jar
-    manifest {
-        from jenkinsManifest, gitManifest
-    }
-}
-
-// Dev jars
-task deobfJar(type: Jar) {
-    from sourceSets.main.output
-    classifier = 'deobf'
-}
-
-// Add dev jars to master artifacts list
-artifacts {
-    archives deobfJar
-}
-
-// Sign release jar
-task signJar(dependsOn: 'reobf') {
-    inputs.file jar.getArchivePath()
-    outputs.file jar.getArchivePath()
-
-    onlyIf {
-        return keystore_config != null
-    }
-
-    doLast {
-        ant.signjar(jar: jar.getArchivePath(),
-                alias: keystore_config.key_alias,
-                keystore: keystore,
-                storepass: keystore_config.key_store_password,
-                keypass: keystore_config.key_alias_password,
-                destDir: jar.destinationDir)
-    }
-}
-
-// Maven deployment
-apply plugin: 'maven'
-
-if (!project.hasProperty("DEPLOY_DIR")) {
-    ext.DEPLOY_DIR = null
-}
-
-uploadArchives {
-    repositories {
-        mavenDeployer {
-            repository(url: "file://${DEPLOY_DIR}")
-        }
-    }
-}
-
-uploadArchives.onlyIf { return DEPLOY_DIR != null }
